@@ -4,13 +4,47 @@
     using System.Threading.Tasks;
     using System.Web.Mvc;
     using Models;
+    using Microsoft.ApplicationInsights;
+    using System.Collections.Generic;
+    using System.Collections.Concurrent;
+    using System;
+    using System.Web;
 
+    public class AddUserIdToTelemetryFilter : ActionFilterAttribute
+    {
+        private static TelemetryClient telemetry = new TelemetryClient();
+        static ConcurrentDictionary<string, string> _users = new ConcurrentDictionary<string, string>();
+        static Random rand = new Random();
+
+        public override void OnActionExecuting(ActionExecutingContext filterContext)
+        {
+            telemetry.Context.User.Id = GetUsername(filterContext.RequestContext.HttpContext.Request);
+            telemetry.TrackEvent(filterContext.ActionDescriptor.ControllerDescriptor.ControllerName + "." + filterContext.ActionDescriptor.ActionName + "-" + filterContext.RequestContext.HttpContext.Request.RequestType);
+            base.OnActionExecuting(filterContext);
+        }
+
+        private string GetUsername(HttpRequestBase request)
+        {
+            if (_users.ContainsKey(request.UserHostAddress))
+                return _users[request.UserHostAddress];
+
+            List<string> names = new List<string> { "James Kirk", "Brunt", "Abe", "Chell", "Tom", "Jean-Luc Picard", "Christopher", "Quark", "Rom", "Q", "Wash", "Krall", "Spock", "Montgomery Scotty Scott", "Sulu", "Benjamin Sisko" };
+
+            var name = names[rand.Next(0, names.Count - 1)];
+            _users.AddOrUpdate(request.UserHostAddress, name, (key, value) => value);
+            return name;
+        }
+    }
+    [AddUserIdToTelemetryFilter]
     public class ItemController : Controller
     {
+        private static TelemetryClient telemetry = new TelemetryClient();
+
         [ActionName("Index")]
         public async Task<ActionResult> IndexAsync()
         {
             var items = await DocumentDBRepository<Item>.GetItemsAsync(d => !d.Completed);
+
             return View(items);
         }
 
